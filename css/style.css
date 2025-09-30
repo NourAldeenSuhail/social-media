@@ -1,0 +1,80 @@
+body {
+  padding-top: 70px;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.fixed-top {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.post-card {
+  margin-bottom: 1.8rem;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+  border: none;
+}
+
+.avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  object-fit: cover;
+  margin-left: 12px;
+}
+
+.post-image {
+  width: 100%;
+  height: auto;
+  max-height: 500px;
+  object-fit: cover;
+}
+
+.post-content {
+  padding: 1.2rem;
+}
+
+.post-title {
+  font-weight: 700;
+  margin-bottom: 0.6rem;
+  color: #212529;
+}
+
+.post-body {
+  color: #495057;
+  margin-bottom: 1rem;
+  line-height: 1.6;
+}
+
+.post-meta {
+  font-size: 0.85rem;
+  color: #6c757d;
+  margin-bottom: 1rem;
+}
+
+.divider {
+  height: 1px;
+  background-color: #e9ecef;
+  margin: 1rem 0;
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 1rem;
+}
+
+.tag {
+  background-color: #f1f3f5;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  color: #495057;
+}
+
+.comments-count {
+  font-size: 0.9rem;
+  color: #6c757d;
+  font-weight: 600;
+}
