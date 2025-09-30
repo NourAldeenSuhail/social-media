@@ -55,6 +55,9 @@
             <button class="btn btn-outline-light" id="logoutBtn">
               تسجيل الخروج
             </button>
+            <button class="btn btn-outline-light ms-2" id="createPostBtn">
+              <i class="bi bi-pencil-square"></i> منشور جديد
+            </button>
           </div>
         </div>
       </div>
@@ -181,6 +184,72 @@
               <div id="registerError" class="alert alert-danger d-none"></div>
               <button type="submit" class="btn btn-success w-100">
                 إنشاء الحساب
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Create Post Modal -->
+    <div
+      class="modal fade"
+      id="createPostModal"
+      tabindex="-1"
+      aria-labelledby="createPostModalLabel"
+    >
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header bg-primary text-white">
+            <h5 class="modal-title" id="createPostModalLabel">
+              إنشاء منشور جديد
+            </h5>
+            <button
+              type="button"
+              class="btn-close btn-close-white"
+              data-bs-dismiss="modal"
+            ></button>
+          </div>
+          <div class="modal-body">
+            <form id="createPostForm" enctype="multipart/form-data">
+              <div class="mb-3">
+                <label class="form-label">العنوان (اختياري)</label>
+                <input type="text" class="form-control" id="postTitle" />
+              </div>
+              <div class="mb-3">
+                <label class="form-label">المحتوى</label>
+                <textarea
+                  class="form-control"
+                  id="postBody"
+                  rows="4"
+                  required
+                ></textarea>
+              </div>
+              <div class="mb-3">
+                <label class="form-label">الصورة (اختياري)</label>
+                <input
+                  type="file"
+                  class="form-control"
+                  id="postImage"
+                  accept="image/*"
+                />
+                <div class="form-text">يدعم JPG, PNG, GIF</div>
+              </div>
+              <div class="mb-3">
+                <label class="form-label"
+                  >التاغات (مفصولة بفواصل، مثال: تكنولوجيا, برمجة)</label
+                >
+                <input
+                  type="text"
+                  class="form-control"
+                  id="postTags"
+                  placeholder="اكتب تاغات..."
+                />
+                <div id="suggestedTags" class="mt-2"></div>
+              </div>
+              <div id="postError" class="alert alert-danger d-none"></div>
+              <button type="submit" class="btn btn-primary w-100">
+                نشر المنشور
               </button>
             </form>
           </div>

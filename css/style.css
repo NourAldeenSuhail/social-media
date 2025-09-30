@@ -144,3 +144,19 @@ body {
     padding: 1.2rem 1rem;
   }
 }
+.suggested-tag {
+  display: inline-block;
+  background: #eef2ff;
+  color: var(--primary);
+  padding: 4px 10px;
+  border-radius: 16px;
+  font-size: 0.85rem;
+  margin: 2px;
+  cursor: pointer;
+  border: 1px solid #dbe2ff;
+  transition: background 0.2s;
+}
+
+.suggested-tag:hover {
+  background: #dfe9ff;
+}

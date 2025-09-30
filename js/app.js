@@ -71,6 +71,38 @@
     return res.data;
   }
 
+  // === جلب التاغات لعرض اقتراحات ===
+  async function fetchTags() {
+    try {
+      const res = await axios.get(`${API_BASE}/tags`, {
+        headers: getHeaders(),
+      });
+      return res.data.data || [];
+    } catch (error) {
+      console.warn("فشل جلب التاغات:", error);
+      return [];
+    }
+  }
+
+  // === إنشاء منشور جديد ===
+  async function createPost(title, body, imageFile, tags) {
+    const formData = new FormData();
+    if (title) formData.append("title", title);
+    formData.append("body", body);
+    if (imageFile) formData.append("image", imageFile);
+    if (tags && tags.length > 0) {
+      tags.forEach((tag) => formData.append("tags[]", tag.trim()));
+    }
+
+    const res = await axios.post(`${API_BASE}/posts`, formData, {
+      headers: {
+        ...getHeaders(),
+        "Content-Type": "multipart/form-data",
+      },
+    });
+    return res.data;
+  }
+
   // === DOM Elements ===
   const postsContainer = document.getElementById("postsContainer");
   const loadingIndicator = document.getElementById("loadingIndicator");
@@ -151,9 +183,12 @@
           : `https://placehold.co/36x36/4361ee/white?text=${(user.name ||
               user.username ||
               "U")[0].toUpperCase()}`;
+
+      document.getElementById("createPostBtn")?.classList.remove("d-none");
     } else {
       authButtons.classList.remove("d-none");
       userGreeting.classList.add("d-none");
+      document.getElementById("createPostBtn")?.classList.add("d-none");
     }
   }
 
@@ -203,6 +238,86 @@
       loading = false;
       loadingIndicator.classList.add("d-none");
     }
+  }
+
+  // === عرض اقتراحات التاغات ===
+  function renderSuggestedTags(tags) {
+    const container = document.getElementById("suggestedTags");
+    if (!container || tags.length === 0) return;
+
+    container.innerHTML = '<small class="text-muted">تاغات مقترحة:</small><br>';
+    tags.slice(0, 10).forEach((tag) => {
+      const tagEl = document.createElement("span");
+      tagEl.className = "suggested-tag";
+      tagEl.textContent = `#${tag.name || tag}`;
+      tagEl.addEventListener("click", () => {
+        const input = document.getElementById("postTags");
+        const current = input.value.trim();
+        const newTag = tag.name || tag;
+        if (current.includes(newTag)) return;
+        input.value = current ? `${current}, ${newTag}` : newTag;
+      });
+      container.appendChild(tagEl);
+    });
+  }
+
+  // === تهيئة Modal لإنشاء منشور ===
+  async function initCreatePostModal() {
+    const modal = document.getElementById("createPostModal");
+    modal.addEventListener("show.bs.modal", async () => {
+      const tags = await fetchTags();
+      renderSuggestedTags(tags);
+    });
+
+    document
+      .getElementById("createPostForm")
+      .addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const title = document.getElementById("postTitle").value.trim();
+        const body = document.getElementById("postBody").value.trim();
+        const imageFile = document.getElementById("postImage").files[0];
+        const tagsInput = document.getElementById("postTags").value;
+        const tags = tagsInput
+          ? tagsInput
+              .split(",")
+              .map((t) => t.trim())
+              .filter((t) => t)
+          : [];
+        const errorEl = document.getElementById("postError");
+        errorEl.classList.add("d-none");
+
+        if (!body) {
+          errorEl.textContent = "المحتوى مطلوب.";
+          errorEl.classList.remove("d-none");
+          return;
+        }
+
+        try {
+          const response = await createPost(title, body, imageFile, tags);
+          postsContainer.innerHTML = "";
+          currentPage = 1;
+          hasMore = true;
+          loadPosts();
+          bootstrap.Modal.getInstance(modal).hide();
+          document.getElementById("createPostForm").reset();
+          document.getElementById("suggestedTags").innerHTML = "";
+        } catch (error) {
+          console.error("فشل إنشاء المنشور:", error);
+          if (error.response?.data?.message) {
+            errorEl.textContent = error.response.data.message;
+          } else if (error.response?.data?.errors) {
+            const errors = error.response.data.errors;
+            let msg = "";
+            for (const field in errors) {
+              msg += `${errors[field][0]}\n`;
+            }
+            errorEl.textContent = msg;
+          } else {
+            errorEl.textContent = "فشل نشر المنشور. تأكد من اتصالك.";
+          }
+          errorEl.classList.remove("d-none");
+        }
+      });
   }
 
   // === معالجة النماذج ===
@@ -282,6 +397,14 @@
     }
   });
 
+  // === ربط زر "منشور جديد" ===
+  document.getElementById("createPostBtn")?.addEventListener("click", () => {
+    const modal = new bootstrap.Modal(
+      document.getElementById("createPostModal")
+    );
+    modal.show();
+  });
+
   // === أحداث الأزرار ===
   document.getElementById("loginBtn").addEventListener("click", () => {
     const modal = new bootstrap.Modal(document.getElementById("loginModal"));
@@ -306,4 +429,5 @@
   // === تهيئة أولية ===
   updateUI();
   loadPosts();
+  initCreatePostModal();
 })();
