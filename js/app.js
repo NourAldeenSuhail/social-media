@@ -2,43 +2,65 @@
   "use strict";
 
   const API_BASE = "https://tarmeezacademy.com/api/v1";
-  let AUTH_TOKEN = null;
 
-  function setAuthToken(token) {
-    AUTH_TOKEN = token;
+  // === إدارة الجلسة ===
+  function saveAuthData(user, token) {
+    localStorage.setItem("tarmeez_user", JSON.stringify(user));
+    localStorage.setItem("tarmeez_token", token);
   }
-  function getAuthToken() {
-    return AUTH_TOKEN;
+
+  function getAuthData() {
+    const user = localStorage.getItem("tarmeez_user");
+    const token = localStorage.getItem("tarmeez_token");
+    return {
+      user: user ? JSON.parse(user) : null,
+      token: token || null,
+    };
   }
-  function clearAuthToken() {
-    AUTH_TOKEN = null;
+
+  function clearAuthData() {
+    localStorage.removeItem("tarmeez_user");
+    localStorage.removeItem("tarmeez_token");
   }
 
   function getHeaders() {
+    const token = getAuthData().token;
     const headers = { Accept: "application/json" };
-    if (AUTH_TOKEN) {
-      headers["Authorization"] = `Bearer ${AUTH_TOKEN}`;
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
     }
     return headers;
   }
 
   // === API Functions ===
-  async function login(email, password) {
+  async function login(username, password) {
     const res = await axios.post(
       `${API_BASE}/login`,
-      { email, password },
+      {
+        username,
+        password,
+      },
       { headers: { Accept: "application/json" } }
     );
     return res.data;
   }
 
-  async function register(name, email, password) {
+  async function register(name, username, email, password) {
     const res = await axios.post(
       `${API_BASE}/register`,
-      { name, email, password },
+      {
+        name,
+        username,
+        email,
+        password,
+      },
       { headers: { Accept: "application/json" } }
     );
     return res.data;
+  }
+
+  async function logout() {
+    await axios.post(`${API_BASE}/logout`, {}, { headers: getHeaders() });
   }
 
   async function fetchPosts(page = 1, limit = 10) {
@@ -55,28 +77,26 @@
   const noMorePosts = document.getElementById("noMorePosts");
   const authButtons = document.getElementById("authButtons");
   const userGreeting = document.getElementById("userGreeting");
-  const loginBtn = document.getElementById("loginBtn");
-  const registerBtn = document.getElementById("registerBtn");
+  const navAvatar = document.getElementById("navAvatar");
+  const navUserName = document.getElementById("navUserName");
 
   let currentPage = 1;
   let loading = false;
   let hasMore = true;
 
-  // === Helper Functions ===
+  // === عرض المنشور ===
   function cleanImageUrl(url) {
-    if (!url) return "https://placehold.co/600x400/e9ecef/6c757d?text=No+Image";
-    if (typeof url === "string") {
-      return url.trim();
-    }
-    return "https://placehold.co/600x400/e9ecef/6c757d?text=No+Image";
+    if (!url || typeof url !== "string")
+      return "https://placehold.co/600x400/f0f4ff/4361ee?text=No+Image";
+    return url.trim();
   }
 
   function renderPost(post) {
     const author = post.author || {};
     const avatarUrl =
       author.profile_image && typeof author.profile_image === "string"
-        ? author.profile_image.trim()
-        : `https://placehold.co/44x44/0d6efd/white?text=${(author.name ||
+        ? cleanImageUrl(author.profile_image)
+        : `https://placehold.co/48x48/4361ee/white?text=${(author.name ||
             "U")[0].toUpperCase()}`;
 
     const imageUrl = cleanImageUrl(post.image);
@@ -101,7 +121,7 @@
           <div class="post-meta">${post.created_at || "الآن"}</div>
         </div>
       </div>
-      <img src="${imageUrl}" class="post-image" alt="Post image" onerror="this.src='https://placehold.co/600x400/e9ecef/6c757d?text=Image+Error'">
+      <img src="${imageUrl}" class="post-image" alt="Post image" onerror="this.src='https://placehold.co/600x400/f0f4ff/4361ee?text=Image+Error'">
       <div class="post-content">
         <h5 class="post-title">${post.title || "بدون عنوان"}</h5>
         <p class="post-body">${post.body || "لا يوجد وصف."}</p>
@@ -110,33 +130,34 @@
           ${tagsHtml}
         </div>
         <div class="comments-count">
-          <i class="bi bi-chat ms-1"></i> ${post.comments_count || 0} تعليقات
+          <i class="bi bi-chat"></i> ${post.comments_count || 0} تعليقات
         </div>
       </div>
     `;
     return postEl;
   }
 
+  // === تحديث واجهة المستخدم ===
   function updateUI() {
-    const token = getAuthToken();
-    if (token) {
+    const { user, token } = getAuthData();
+    if (token && user) {
       authButtons.classList.add("d-none");
       userGreeting.classList.remove("d-none");
-      userGreeting.innerHTML = `<span class="me-3">مرحباً!</span><button class="btn btn-outline-secondary" id="logoutBtn">تسجيل الخروج</button>`;
-      document
-        .getElementById("logoutBtn")
-        .addEventListener("click", handleLogout);
+
+      navUserName.textContent = user.name || user.username;
+      navAvatar.src =
+        user.profile_image && typeof user.profile_image === "string"
+          ? cleanImageUrl(user.profile_image)
+          : `https://placehold.co/36x36/4361ee/white?text=${(user.name ||
+              user.username ||
+              "U")[0].toUpperCase()}`;
     } else {
       authButtons.classList.remove("d-none");
       userGreeting.classList.add("d-none");
     }
   }
 
-  async function handleLogout() {
-    clearAuthToken();
-    updateUI();
-  }
-
+  // === تحميل المنشورات ===
   async function loadPosts(reset = false) {
     if (loading || (!hasMore && !reset)) return;
 
@@ -174,12 +195,9 @@
       }
     } catch (error) {
       console.error("خطأ في تحميل المنشورات:", error);
-      if (reset && error.response?.status === 401) {
-        alert("الجلسة منتهية. سيتم عرض المنشورات العامة.");
-        clearAuthToken();
-        updateUI();
-      } else {
-        alert("فشل تحميل المنشورات. قد يكون الخادم غير متاح.");
+      if (currentPage === 1) {
+        noMorePosts.textContent = "فشل تحميل المنشورات. حاول لاحقًا.";
+        noMorePosts.classList.remove("d-none");
       }
     } finally {
       loading = false;
@@ -187,44 +205,95 @@
     }
   }
 
-  async function handleLogin() {
-    const email = prompt("البريد الإلكتروني:");
-    const password = prompt("كلمة المرور:");
-    if (!email || !password) return;
+  // === معالجة النماذج ===
+  document.getElementById("loginForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const username = document.getElementById("loginUsername").value.trim();
+    const password = document.getElementById("loginPassword").value;
+    const errorEl = document.getElementById("loginError");
+    errorEl.classList.add("d-none");
 
     try {
-      const response = await login(email, password);
-      const token = response.access_token;
-      if (token) {
-        setAuthToken(token);
-        updateUI();
-        await loadPosts(true);
+      const response = await login(username, password);
+      saveAuthData(response.user, response.token);
+      updateUI();
+      loadPosts(true);
+      bootstrap.Modal.getInstance(document.getElementById("loginModal")).hide();
+      document.getElementById("loginForm").reset();
+    } catch (error) {
+      if (error.response?.data?.message) {
+        errorEl.textContent = error.response.data.message;
+        errorEl.classList.remove("d-none");
       } else {
-        alert("فشل تسجيل الدخول.");
+        errorEl.textContent = "فشل تسجيل الدخول. تحقق من بياناتك.";
+        errorEl.classList.remove("d-none");
       }
-    } catch (error) {
-      alert("فشل تسجيل الدخول. تحقق من بريدك وكلمة المرور.");
     }
-  }
+  });
 
-  async function handleRegister() {
-    const name = prompt("الاسم الكامل:");
-    const email = prompt("البريد الإلكتروني:");
-    const password = prompt("كلمة المرور (6+ أحرف):");
-    if (!name || !email || !password) return;
+  document
+    .getElementById("registerForm")
+    .addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const name = document.getElementById("registerName").value.trim();
+      const username = document.getElementById("registerUsername").value.trim();
+      const email = document.getElementById("registerEmail").value.trim();
+      const password = document.getElementById("registerPassword").value;
+      const errorEl = document.getElementById("registerError");
+      errorEl.classList.add("d-none");
 
+      try {
+        const response = await register(name, username, email, password);
+        saveAuthData(response.user, response.token);
+        updateUI();
+        loadPosts(true);
+        bootstrap.Modal.getInstance(
+          document.getElementById("registerModal")
+        ).hide();
+        document.getElementById("registerForm").reset();
+      } catch (error) {
+        if (error.response?.data?.errors) {
+          const errors = error.response.data.errors;
+          let message = "";
+          for (const field in errors) {
+            message += `${errors[field][0]}\n`;
+          }
+          errorEl.textContent = message;
+          errorEl.classList.remove("d-none");
+        } else if (error.response?.data?.message) {
+          errorEl.textContent = error.response.data.message;
+          errorEl.classList.remove("d-none");
+        } else {
+          errorEl.textContent = "فشل إنشاء الحساب. حاول لاحقًا.";
+          errorEl.classList.remove("d-none");
+        }
+      }
+    });
+
+  // === تسجيل الخروج ===
+  document.getElementById("logoutBtn")?.addEventListener("click", async () => {
     try {
-      await register(name, email, password);
-      alert("تم إنشاء الحساب! يرجى تسجيل الدخول.");
+      await logout();
     } catch (error) {
-      alert("فشل التسجيل. قد يكون البريد مستخدمًا.");
+      console.warn("فشل تسجيل الخروج من الخادم:", error);
+    } finally {
+      clearAuthData();
+      updateUI();
     }
-  }
+  });
 
-  // === Event Listeners ===
-  if (loginBtn) loginBtn.addEventListener("click", handleLogin);
-  if (registerBtn) registerBtn.addEventListener("click", handleRegister);
+  // === أحداث الأزرار ===
+  document.getElementById("loginBtn").addEventListener("click", () => {
+    const modal = new bootstrap.Modal(document.getElementById("loginModal"));
+    modal.show();
+  });
 
+  document.getElementById("registerBtn").addEventListener("click", () => {
+    const modal = new bootstrap.Modal(document.getElementById("registerModal"));
+    modal.show();
+  });
+
+  // === تمرير لا نهائي ===
   window.addEventListener("scroll", () => {
     if (
       window.innerHeight + window.scrollY >=
@@ -234,7 +303,7 @@
     }
   });
 
-  // === Initial Load ===
+  // === تهيئة أولية ===
   updateUI();
-  loadPosts(); // جلب أول 10 منشورات فورًا
+  loadPosts();
 })();
