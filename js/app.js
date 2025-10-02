@@ -110,6 +110,30 @@
     return res.data;
   }
 
+  // === تعديل منشور ===
+  async function updatePost(postId, title, body, imageFile, tags) {
+    const formData = new FormData();
+    if (title !== undefined) formData.append("title", title);
+    if (body !== undefined) formData.append("body", body);
+    if (imageFile) formData.append("image", imageFile);
+    if (tags?.length) {
+      tags.forEach((tag) => formData.append("tags[]", tag));
+    }
+
+    const res = await axios.post(`${API_BASE}/posts/${postId}`, formData, {
+      headers: getHeaders(),
+      params: { _method: "PUT" }, // Laravel يدعم PUT عبر POST مع _method
+    });
+    return res.data;
+  }
+
+  // === حذف منشور ===
+  async function deletePost(postId) {
+    await axios.delete(`${API_BASE}/posts/${postId}`, {
+      headers: getHeaders(),
+    });
+  }
+
   // ==============================
   // 4. دوال العرض (UI Rendering)
   // ==============================
@@ -136,34 +160,64 @@
         })
         .join(" ") || "";
 
+    // تحقق مما إذا كان المنشور ملكًا للمستخدم الحالي
+    const { user } = getAuthData();
+    const isOwner = user && post.author && post.author.id === user.id;
+
+    // أزرار التعديل/الحذف (تظهر فقط للمنشورات الخاصة بك)
+    const actionsHtml = isOwner
+      ? `
+    <div class="d-flex justify-content-end gap-2 mt-2">
+      <button class="btn btn-sm btn-outline-primary edit-post-btn" data-post-id="${post.id}">
+        <i class="bi bi-pencil"></i> تعديل
+      </button>
+      <button class="btn btn-sm btn-outline-danger delete-post-btn" data-post-id="${post.id}">
+        <i class="bi bi-trash"></i> حذف
+      </button>
+    </div>
+  `
+      : "";
+
     const postEl = document.createElement("div");
     postEl.className = "card post-card";
     postEl.innerHTML = `
-      <div class="post-header d-flex align-items-center p-3">
-        <img src="${avatarUrl}" class="avatar" alt="Avatar" onerror="this.src='https://placehold.co/48x48/4361ee/white?text=${displayName
-      .charAt(0)
-      .toUpperCase()}'">
-        <div>
-          <div class="fw-bold">${displayName}</div>
-          <div class="post-meta">${post.created_at || "الآن"}</div>
-        </div>
+    <div class="post-header d-flex align-items-center p-3">
+      <img src="${avatarUrl}" class="avatar" alt="Avatar" 
+           onerror="this.src='https://placehold.co/48x48/4361ee/white?text=${displayName
+             .charAt(0)
+             .toUpperCase()}'">
+      <div>
+        <div class="fw-bold">${displayName}</div>
+        <div class="post-meta">${post.created_at || "الآن"}</div>
       </div>
-      ${
-        imageUrl
-          ? `<img src="${imageUrl}" class="post-image" alt="Post image" onerror="this.src='https://placehold.co/600x400/f0f4ff/4361ee?text=Image+Error'">`
-          : ""
-      }
-      <div class="post-content">
-        <h5 class="post-title">${post.title || "بدون عنوان"}</h5>
-        <p class="post-body">${post.body || "لا يوجد وصف."}</p>
-        <div class="divider"></div>
-        <div class="tags">${tagsHtml}</div>
-        <div class="comments-count"><i class="bi bi-chat"></i> ${
-          post.comments_count || 0
-        } تعليقات</div>
-      </div>
-    `;
-    postEl.addEventListener("click", () => showPostDetails(post));
+    </div>
+    ${
+      imageUrl
+        ? `<img src="${imageUrl}" class="post-image" alt="Post image" 
+                   onerror="this.src='https://placehold.co/600x400/f0f4ff/4361ee?text=Image+Error'">`
+        : ""
+    }
+    <div class="post-content">
+      <h5 class="post-title">${post.title || "بدون عنوان"}</h5>
+      <p class="post-body">${post.body || "لا يوجد وصف."}</p>
+      <div class="divider"></div>
+      <div class="tags">${tagsHtml}</div>
+      <div class="comments-count"><i class="bi bi-chat"></i> ${
+        post.comments_count || 0
+      } 
+      تعليقات</div>
+      <button class="btn btn-sm btn-outline-secondary view-details-btn" data-post-id="${
+        post.id
+      }">
+        عرض التفاصيل
+      </button>
+      ${actionsHtml}
+    </div>
+  `;
+
+    // احفظ بيانات المنشور في العنصر لاستخدامها لاحقًا في التعديل
+    postEl.dataset.postData = JSON.stringify(post);
+
     return postEl;
   }
 
@@ -600,6 +654,156 @@
         }
       }
     });
+
+  // === حدث الحذف ===
+  document
+    .getElementById("postsContainer")
+    .addEventListener("click", async (e) => {
+      if (e.target.closest(".delete-post-btn")) {
+        const postId = e.target.closest(".delete-post-btn").dataset.postId;
+        if (!confirm("هل أنت متأكد من حذف هذا المنشور؟")) return;
+
+        try {
+          await deletePost(postId);
+          // أعد تحميل المنشورات
+          document.getElementById("postsContainer").innerHTML = "";
+          currentPage = 1;
+          hasMore = true;
+          loadPosts();
+        } catch (error) {
+          alert("فشل حذف المنشور. قد لا يكون لك الصلاحية.");
+          console.error("خطأ الحذف:", error);
+        }
+      }
+    });
+
+  // === حدث التعديل ===
+  document
+    .getElementById("postsContainer")
+    .addEventListener("click", async (e) => {
+      if (e.target.closest(".edit-post-btn")) {
+        const postId = e.target.closest(".edit-post-btn").dataset.postId;
+        const postElement = e.target.closest(".post-card");
+        const post = JSON.parse(postElement.dataset.postData); // سنحفظ البيانات لاحقًا
+
+        // إنشاء Modal للتعديل (مشابه لإنشاء منشور)
+        let editModalHTML = `
+      <div class="modal fade" id="editPostModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+          <div class="modal-content">
+            <div class="modal-header bg-warning text-white">
+              <h5 class="modal-title">تعديل المنشور</h5>
+              <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+              <form id="editPostForm" enctype="multipart/form-data">
+                <div class="mb-3">
+                  <label class="form-label">العنوان</label>
+                  <input type="text" class="form-control" id="editPostTitle" value="${
+                    post.title || ""
+                  }">
+                </div>
+                <div class="mb-3">
+                  <label class="form-label">المحتوى</label>
+                  <textarea class="form-control" id="editPostBody" rows="4" required>${
+                    post.body || ""
+                  }</textarea>
+                </div>
+                <div class="mb-3">
+                  <label class="form-label">الصورة الحالية</label>
+                  ${
+                    post.image
+                      ? `<img src="${cleanImageUrl(
+                          post.image
+                        )}" class="img-fluid rounded mb-2" width="100">`
+                      : '<p class="text-muted">لا توجد صورة</p>'
+                  }
+                  <input type="file" class="form-control" id="editPostImage" accept="image/*">
+                  <div class="form-text">اتركه فارغًا للحفاظ على الصورة الحالية</div>
+                </div>
+                <div class="mb-3">
+                  <label class="form-label">التاغات (مفصولة بفواصل)</label>
+                  <input type="text" class="form-control" id="editPostTags" 
+                         value="${(post.tags || [])
+                           .map((t) => t.arabic_name || t.name)
+                           .join(", ")}">
+                </div>
+                <div id="editPostError" class="alert alert-danger d-none"></div>
+                <button type="submit" class="btn btn-warning w-100">تحديث المنشور</button>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+        const existing = document.getElementById("editPostModal");
+        if (existing) existing.remove();
+        document.body.insertAdjacentHTML("beforeend", editModalHTML);
+
+        // حفظ بيانات المنشور في العنصر (للوصول إليها لاحقًا)
+        postElement.dataset.postData = JSON.stringify(post);
+
+        // ربط نموذج التعديل
+        document
+          .getElementById("editPostForm")
+          .addEventListener("submit", async (ev) => {
+            ev.preventDefault();
+            const title = document.getElementById("editPostTitle").value.trim();
+            const body = document.getElementById("editPostBody").value.trim();
+            const imageFile = document.getElementById("editPostImage").files[0];
+            const tagsInput = document.getElementById("editPostTags").value;
+            const tags = tagsInput
+              ? tagsInput
+                  .split(",")
+                  .map((t) => t.trim())
+                  .filter((t) => t)
+              : [];
+            const errorEl = document.getElementById("editPostError");
+            if (errorEl) errorEl.classList.add("d-none");
+
+            try {
+              await updatePost(postId, title, body, imageFile, tags);
+              // أعد التحميل
+              document.getElementById("postsContainer").innerHTML = "";
+              currentPage = 1;
+              hasMore = true;
+              loadPosts();
+              bootstrap.Modal.getInstance(
+                document.getElementById("editPostModal")
+              ).hide();
+            } catch (error) {
+              console.error("خطأ التعديل:", error);
+              if (errorEl) {
+                errorEl.textContent =
+                  error.response?.data?.message || "فشل تحديث المنشور.";
+                errorEl.classList.remove("d-none");
+              }
+            }
+          });
+
+        const modal = new bootstrap.Modal(
+          document.getElementById("editPostModal")
+        );
+        modal.show();
+        document
+          .getElementById("editPostModal")
+          .addEventListener("hidden.bs.modal", () => {
+            document.getElementById("editPostModal").remove();
+          });
+      }
+    });
+  // حدث عرض تفاصيل المنشور
+  document.getElementById("postsContainer").addEventListener("click", (e) => {
+    if (e.target.closest(".view-details-btn")) {
+      const postId = e.target.closest(".view-details-btn").dataset.postId;
+      // نحتاج إلى جلب المنشور الكامل (لأن post في renderPost قد لا يحتوي على comments)
+      // لكن بما أننا نستخدم نفس الكائن، يمكننا استخدام dataset
+      const postElement = e.target.closest(".post-card");
+      const post = JSON.parse(postElement.dataset.postData);
+      showPostDetails(post);
+    }
+  });
   // معالجة نماذج Login / Register / Create Post
   // (تم تضمينها في HTML عبر Bootstrap Modals)
 })();
