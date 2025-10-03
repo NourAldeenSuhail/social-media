@@ -186,3 +186,23 @@ body {
   object-fit: cover;
   border: 2px solid rgba(255, 255, 255, 0.3);
 }
+/* صفحة الملف الشخصي */
+#profileAvatar {
+  object-fit: cover;
+  border: 3px solid var(--primary);
+}
+
+#editProfileSection {
+  margin-top: 1rem;
+}
+
+/* جعل العناصر قابلة للنقر */
+.post-header img,
+.post-header > div {
+  transition: opacity 0.2s;
+}
+
+.post-header img:hover,
+.post-header > div:hover {
+  opacity: 0.8;
+}

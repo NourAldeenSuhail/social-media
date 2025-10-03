@@ -13,7 +13,7 @@
     localStorage.setItem("tarmeez_user", JSON.stringify(user));
     localStorage.setItem("tarmeez_token", token);
   }
-  // حدث إضافة تعليق
+
   function getAuthData() {
     const user = localStorage.getItem("tarmeez_user");
     const token = localStorage.getItem("tarmeez_token");
@@ -88,12 +88,11 @@
     }
 
     const res = await axios.post(`${API_BASE}/posts`, formData, {
-      headers: {
-        ...getHeaders(),
-      },
+      headers: getHeaders(),
     });
     return res.data;
   }
+
   async function fetchComments(postId) {
     const res = await axios.get(`${API_BASE}/posts/${postId}/comments`, {
       headers: getHeaders(),
@@ -122,7 +121,7 @@
 
     const res = await axios.post(`${API_BASE}/posts/${postId}`, formData, {
       headers: getHeaders(),
-      params: { _method: "PUT" }, // Laravel يدعم PUT عبر POST مع _method
+      params: { _method: "PUT" },
     });
     return res.data;
   }
@@ -132,6 +131,41 @@
     await axios.delete(`${API_BASE}/posts/${postId}`, {
       headers: getHeaders(),
     });
+  }
+
+  // === جلب بيانات مستخدم ===
+  async function fetchUserProfile(userId) {
+    const endpoint =
+      userId === "me" ? `${API_BASE}/users/me` : `${API_BASE}/users/${userId}`;
+    const res = await axios.get(endpoint, { headers: getHeaders() });
+    return res.data;
+  }
+
+  // === جلب منشورات مستخدم ===
+  async function fetchUserPosts(userId, page = 1, limit = 10) {
+    const endpoint =
+      userId === "me"
+        ? `${API_BASE}/users/me/posts`
+        : `${API_BASE}/users/${userId}/posts`;
+    const res = await axios.get(endpoint, {
+      headers: getHeaders(),
+      params: { page, limit },
+    });
+    return res.data;
+  }
+
+  // === تحديث الملف الشخصي ===
+  async function updateProfile(name, username, password) {
+    const formData = new FormData();
+    formData.append("name", name);
+    formData.append("username", username);
+    if (password) formData.append("password", password);
+
+    const res = await axios.post(`${API_BASE}/updatePorfile`, formData, {
+      headers: getHeaders(),
+      params: { _method: "PUT" },
+    });
+    return res.data;
   }
 
   // ==============================
@@ -160,11 +194,9 @@
         })
         .join(" ") || "";
 
-    // تحقق مما إذا كان المنشور ملكًا للمستخدم الحالي
     const { user } = getAuthData();
     const isOwner = user && post.author && post.author.id === user.id;
 
-    // أزرار التعديل/الحذف (تظهر فقط للمنشورات الخاصة بك)
     const actionsHtml = isOwner
       ? `
     <div class="d-flex justify-content-end gap-2 mt-2">
@@ -185,16 +217,20 @@
       <img src="${avatarUrl}" class="avatar" alt="Avatar" 
            onerror="this.src='https://placehold.co/48x48/4361ee/white?text=${displayName
              .charAt(0)
-             .toUpperCase()}'">
-      <div>
+             .toUpperCase()}'"
+           onclick="window.location.href='profile.html?user_id=${
+             author.id
+           }'" style="cursor:pointer;">
+      <div onclick="window.location.href='profile.html?user_id=${
+        author.id
+      }'" style="cursor:pointer;">
         <div class="fw-bold">${displayName}</div>
         <div class="post-meta">${post.created_at || "الآن"}</div>
       </div>
     </div>
     ${
       imageUrl
-        ? `<img src="${imageUrl}" class="post-image" alt="Post image" 
-                   onerror="this.src='https://placehold.co/600x400/f0f4ff/4361ee?text=Image+Error'">`
+        ? `<img src="${imageUrl}" class="post-image" alt="Post image" onerror="this.src='https://placehold.co/600x400/f0f4ff/4361ee?text=Image+Error'">`
         : ""
     }
     <div class="post-content">
@@ -202,22 +238,21 @@
       <p class="post-body">${post.body || "لا يوجد وصف."}</p>
       <div class="divider"></div>
       <div class="tags">${tagsHtml}</div>
-      <div class="comments-count"><i class="bi bi-chat"></i> ${
-        post.comments_count || 0
-      } 
-      تعليقات</div>
-      <button class="btn btn-sm btn-outline-secondary view-details-btn" data-post-id="${
-        post.id
-      }">
-        عرض التفاصيل
-      </button>
+      <div class="d-flex justify-content-between align-items-center mt-2">
+        <div class="comments-count">
+          <i class="bi bi-chat"></i> ${post.comments_count || 0} تعليقات
+        </div>
+        <button class="btn btn-sm btn-outline-secondary view-details-btn" data-post-id="${
+          post.id
+        }">
+          عرض التفاصيل
+        </button>
+      </div>
       ${actionsHtml}
     </div>
   `;
 
-    // احفظ بيانات المنشور في العنصر لاستخدامها لاحقًا في التعديل
     postEl.dataset.postData = JSON.stringify(post);
-
     return postEl;
   }
 
@@ -225,49 +260,16 @@
     const author = comment.author || {};
     const displayName = author.name || author.username || "مستخدم";
     const avatarUrl =
-      cleanImageUrl(author.profile_image) ||
-      `https://placehold.co/32x32/4361ee/white?text=${displayName
-        .charAt(0)
-        .toUpperCase()}`;
-
-    return `
-      <div class="mb-3 p-2 border rounded bg-light">
-        <div class="d-flex align-items-center mb-1">
-          <img src="${avatarUrl}" 
-               class="rounded-circle me-2" 
-               width="32" 
-               height="32" 
-               alt="Avatar"
-               onerror="this.src='https://placehold.co/32x32/4361ee/white?text=${displayName
-                 .charAt(0)
-                 .toUpperCase()}'">
-          <strong>${displayName}</strong>
-        </div>
-        <small class="text-muted">${comment.created_at || "الآن"}</small>
-        <p class="mt-1 mb-0">${comment.body || ""}</p>
-      </div>
-    `;
-  }
-
-  function renderComment(comment) {
-    const author = comment.author || {};
-
-    // ✅ الاسم: خذ من name أولًا، ثم username
-    const displayName = author.name || author.username || "مستخدم";
-
-    // ✅ الصورة: إذا كانت سلسلة (رابط)، استخدمها. وإلا، استخدم افتراضية
-    const avatarUrl =
       typeof author.profile_image === "string" && author.profile_image.trim()
         ? author.profile_image.trim()
         : `https://placehold.co/32x32/4361ee/white?text=${displayName
             .charAt(0)
             .toUpperCase()}`;
 
-    // ✅ التاريخ: حول ISO إلى تنسيق عربي
     let displayDate = "الآن";
     if (comment.created_at && typeof comment.created_at === "string") {
       if (comment.created_at.includes("ago")) {
-        displayDate = comment.created_at; // مثل "5 minutes ago"
+        displayDate = comment.created_at;
       } else {
         const date = new Date(comment.created_at);
         if (!isNaN(date.getTime())) {
@@ -284,11 +286,7 @@
     return `
     <div class="mb-3 p-2 border rounded bg-light">
       <div class="d-flex align-items-center mb-1">
-        <img src="${avatarUrl}" 
-             class="rounded-circle me-2" 
-             width="32" 
-             height="32" 
-             alt="Avatar"
+        <img src="${avatarUrl}" class="rounded-circle me-2" width="32" height="32" alt="Avatar"
              onerror="this.src='https://placehold.co/32x32/4361ee/white?text=${displayName
                .charAt(0)
                .toUpperCase()}'">
@@ -313,14 +311,12 @@
               <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-              <!-- Post -->
               <div class="d-flex align-items-center mb-3">
                 <img src="${
                   cleanImageUrl(post.author?.profile_image) ||
                   `https://placehold.co/50x50/4361ee/white?text=${(post.author
                     ?.name || "U")[0].toUpperCase()}`
-                }" 
-                     class="rounded-circle me-3" width="50" height="50" alt="Avatar"
+                }" class="rounded-circle me-3" width="50" height="50" alt="Avatar"
                      onerror="this.src='https://placehold.co/50x50/4361ee/white?text=${(post
                        .author?.name || "U")[0].toUpperCase()}'">
                 <div>
@@ -339,11 +335,9 @@
                     )}" class="img-fluid rounded mb-3" onerror="this.src='https://placehold.co/600x400/f0f4ff/4361ee?text=Image+Error'">`
                   : ""
               }
-              
               <hr>
               <h6>التعليقات (${post.comments_count || 0})</h6>
               <div id="commentsList" class="mb-3"></div>
-              
               <div id="addCommentSection" class="d-none">
                 <textarea class="form-control mb-2" id="commentBody" rows="2" placeholder="اكتب تعليقك..."></textarea>
                 <button class="btn btn-primary btn-sm" id="submitCommentBtn">إضافة تعليق</button>
@@ -355,7 +349,6 @@
       </div>
     `;
 
-    // إزالة الـ Modal القديم إن وُجد
     const existing = document.getElementById("postDetailsModal");
     if (existing) existing.remove();
     document.body.insertAdjacentHTML("beforeend", modalHTML);
@@ -364,12 +357,10 @@
     const commentsList = document.getElementById("commentsList");
     const addCommentSection = document.getElementById("addCommentSection");
 
-    // إظهار حقل التعليق إذا كان المستخدم مسجلًا
     if (getAuthData().token) {
       addCommentSection.classList.remove("d-none");
     }
 
-    // جلب التعليقات
     try {
       const commentsData = await fetchComments(post.id);
       const comments = commentsData.data || [];
@@ -381,7 +372,6 @@
         '<p class="text-danger">فشل تحميل التعليقات.</p>';
     }
 
-    // حدث إضافة تعليق
     document
       .getElementById("submitCommentBtn")
       ?.addEventListener("click", async () => {
@@ -407,7 +397,6 @@
         }
       });
 
-    // عرض الـ Modal
     const modal = new bootstrap.Modal(modalEl);
     modal.show();
     modalEl.addEventListener("hidden.bs.modal", () => modalEl.remove());
@@ -491,260 +480,248 @@
   }
 
   // ==============================
-  // 8. بدء التشغيل
+  // 8. أحداث الصفحة الرئيسية (آمنة)
   // ==============================
-  updateUI();
-  loadPosts();
+  if (document.getElementById("postsContainer")) {
+    updateUI();
+    loadPosts();
 
-  // أحداث الأزرار (Login, Register, Logout, Create Post)
-  document.getElementById("loginBtn")?.addEventListener("click", () => {
-    new bootstrap.Modal(document.getElementById("loginModal")).show();
-  });
-  document.getElementById("registerBtn")?.addEventListener("click", () => {
-    new bootstrap.Modal(document.getElementById("registerModal")).show();
-  });
-  document.getElementById("logoutBtn")?.addEventListener("click", () => {
-    logout().finally(() => {
-      clearAuthData();
-      updateUI();
+    // أحداث الأزرار
+    document.getElementById("loginBtn")?.addEventListener("click", () => {
+      new bootstrap.Modal(document.getElementById("loginModal")).show();
     });
-  });
-  document.getElementById("createPostBtn")?.addEventListener("click", () => {
-    new bootstrap.Modal(document.getElementById("createPostModal")).show();
-  });
-
-  // تمرير لا نهائي
-  window.addEventListener("scroll", () => {
-    if (
-      window.innerHeight + window.scrollY >=
-      document.body.offsetHeight - 1000
-    ) {
-      loadPosts();
-    }
-  });
-
-  // ==============================
-  // 9. معالجة نماذج المصادقة
-  // ==============================
-
-  // تسجيل الدخول
-  document
-    .getElementById("loginForm")
-    ?.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const username = document.getElementById("loginUsername").value.trim();
-      const password = document.getElementById("loginPassword").value;
-      const errorEl = document.getElementById("loginError");
-      if (errorEl) errorEl.classList.add("d-none");
-
-      try {
-        const response = await login(username, password);
-        saveAuthData(response.user, response.token);
+    document.getElementById("registerBtn")?.addEventListener("click", () => {
+      new bootstrap.Modal(document.getElementById("registerModal")).show();
+    });
+    document.getElementById("logoutBtn")?.addEventListener("click", () => {
+      logout().finally(() => {
+        clearAuthData();
         updateUI();
-        loadPosts(true);
-        bootstrap.Modal.getInstance(
-          document.getElementById("loginModal")
-        ).hide();
-        document.getElementById("loginForm").reset();
-      } catch (error) {
-        if (errorEl) {
-          errorEl.textContent =
-            error.response?.data?.message ||
-            "فشل تسجيل الدخول. تحقق من بياناتك.";
-          errorEl.classList.remove("d-none");
-        }
-      }
+      });
+    });
+    document.getElementById("createPostBtn")?.addEventListener("click", () => {
+      new bootstrap.Modal(document.getElementById("createPostModal")).show();
     });
 
-  // إنشاء حساب
-  document
-    .getElementById("registerForm")
-    ?.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const name = document.getElementById("registerName").value.trim();
-      const username = document.getElementById("registerUsername").value.trim();
-      const email = document.getElementById("registerEmail").value.trim();
-      const password = document.getElementById("registerPassword").value;
-      const errorEl = document.getElementById("registerError");
-      if (errorEl) errorEl.classList.add("d-none");
-
-      try {
-        const response = await register(name, username, email, password);
-        saveAuthData(response.user, response.token);
-        updateUI();
-        loadPosts(true);
-        bootstrap.Modal.getInstance(
-          document.getElementById("registerModal")
-        ).hide();
-        document.getElementById("registerForm").reset();
-      } catch (error) {
-        if (errorEl) {
-          const errors = error.response?.data?.errors;
-          if (errors) {
-            let msg = "";
-            for (const field in errors) msg += `${errors[field][0]}\n`;
-            errorEl.textContent = msg;
-          } else {
-            errorEl.textContent =
-              error.response?.data?.message || "فشل إنشاء الحساب.";
-          }
-          errorEl.classList.remove("d-none");
-        }
-      }
-    });
-  // ==============================
-  // 10. معالجة نموذج إنشاء منشور
-  // ==============================
-  document
-    .getElementById("createPostForm")
-    ?.addEventListener("submit", async (e) => {
-      e.preventDefault();
-
-      const title = document.getElementById("postTitle")?.value.trim();
-      const body = document.getElementById("postBody")?.value.trim();
-      const imageFile = document.getElementById("postImage")?.files[0];
-      const tagsInput = document.getElementById("postTags")?.value || "";
-      const tags = tagsInput
-        ? tagsInput
-            .split(",")
-            .map((t) => t.trim())
-            .filter((t) => t)
-        : [];
-
-      const errorEl = document.getElementById("postError");
-      if (errorEl) errorEl.classList.add("d-none");
-
-      if (!body) {
-        if (errorEl) {
-          errorEl.textContent = "المحتوى مطلوب.";
-          errorEl.classList.remove("d-none");
-        }
-        return;
-      }
-
-      try {
-        await createPost(title, body, imageFile, tags);
-
-        // إعادة تحميل المنشورات
-        document.getElementById("postsContainer").innerHTML = "";
-        currentPage = 1;
-        hasMore = true;
+    // تمرير لا نهائي
+    window.addEventListener("scroll", () => {
+      if (
+        window.innerHeight + window.scrollY >=
+        document.body.offsetHeight - 1000
+      ) {
         loadPosts();
+      }
+    });
 
-        // إغلاق النافذة
-        bootstrap.Modal.getInstance(
-          document.getElementById("createPostModal")
-        ).hide();
-        document.getElementById("createPostForm").reset();
-        document.getElementById("suggestedTags").innerHTML = "";
-      } catch (error) {
-        console.error("خطأ في إنشاء المنشور:", error);
-        if (errorEl) {
-          const errors = error.response?.data?.errors;
-          if (errors) {
-            let msg = "";
-            for (const field in errors) msg += `${errors[field][0]}\n`;
-            errorEl.textContent = msg;
-          } else {
+    // معالجة النماذج
+    document
+      .getElementById("loginForm")
+      ?.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const username = document.getElementById("loginUsername").value.trim();
+        const password = document.getElementById("loginPassword").value;
+        const errorEl = document.getElementById("loginError");
+        if (errorEl) errorEl.classList.add("d-none");
+
+        try {
+          const response = await login(username, password);
+          saveAuthData(response.user, response.token);
+          updateUI();
+          loadPosts(true);
+          bootstrap.Modal.getInstance(
+            document.getElementById("loginModal")
+          ).hide();
+          document.getElementById("loginForm").reset();
+        } catch (error) {
+          if (errorEl) {
             errorEl.textContent =
               error.response?.data?.message ||
-              "فشل نشر المنشور. تأكد من اتصالك.";
+              "فشل تسجيل الدخول. تحقق من بياناتك.";
+            errorEl.classList.remove("d-none");
           }
-          errorEl.classList.remove("d-none");
         }
+      });
+
+    document
+      .getElementById("registerForm")
+      ?.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const name = document.getElementById("registerName").value.trim();
+        const username = document
+          .getElementById("registerUsername")
+          .value.trim();
+        const email = document.getElementById("registerEmail").value.trim();
+        const password = document.getElementById("registerPassword").value;
+        const errorEl = document.getElementById("registerError");
+        if (errorEl) errorEl.classList.add("d-none");
+
+        try {
+          const response = await register(name, username, email, password);
+          saveAuthData(response.user, response.token);
+          updateUI();
+          loadPosts(true);
+          bootstrap.Modal.getInstance(
+            document.getElementById("registerModal")
+          ).hide();
+          document.getElementById("registerForm").reset();
+        } catch (error) {
+          if (errorEl) {
+            const errors = error.response?.data?.errors;
+            if (errors) {
+              let msg = "";
+              for (const field in errors) msg += `${errors[field][0]}\n`;
+              errorEl.textContent = msg;
+            } else {
+              errorEl.textContent =
+                error.response?.data?.message || "فشل إنشاء الحساب.";
+            }
+            errorEl.classList.remove("d-none");
+          }
+        }
+      });
+
+    document
+      .getElementById("createPostForm")
+      ?.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const title = document.getElementById("postTitle")?.value.trim();
+        const body = document.getElementById("postBody")?.value.trim();
+        const imageFile = document.getElementById("postImage")?.files[0];
+        const tagsInput = document.getElementById("postTags")?.value || "";
+        const tags = tagsInput
+          ? tagsInput
+              .split(",")
+              .map((t) => t.trim())
+              .filter((t) => t)
+          : [];
+        const errorEl = document.getElementById("postError");
+        if (errorEl) errorEl.classList.add("d-none");
+
+        if (!body) {
+          if (errorEl) {
+            errorEl.textContent = "المحتوى مطلوب.";
+            errorEl.classList.remove("d-none");
+          }
+          return;
+        }
+
+        try {
+          await createPost(title, body, imageFile, tags);
+          document.getElementById("postsContainer").innerHTML = "";
+          currentPage = 1;
+          hasMore = true;
+          loadPosts();
+          bootstrap.Modal.getInstance(
+            document.getElementById("createPostModal")
+          ).hide();
+          document.getElementById("createPostForm").reset();
+          document.getElementById("suggestedTags").innerHTML = "";
+        } catch (error) {
+          console.error("خطأ في إنشاء المنشور:", error);
+          if (errorEl) {
+            const errors = error.response?.data?.errors;
+            if (errors) {
+              let msg = "";
+              for (const field in errors) msg += `${errors[field][0]}\n`;
+              errorEl.textContent = msg;
+            } else {
+              errorEl.textContent =
+                error.response?.data?.message ||
+                "فشل نشر المنشور. تأكد من اتصالك.";
+            }
+            errorEl.classList.remove("d-none");
+          }
+        }
+      });
+
+    // أحداث النقر (آمنة)
+    const postsContainer = document.getElementById("postsContainer");
+    postsContainer.addEventListener("click", (e) => {
+      if (e.target.closest(".view-details-btn")) {
+        const postId = e.target.closest(".view-details-btn").dataset.postId;
+        const postElement = e.target.closest(".post-card");
+        const post = JSON.parse(postElement.dataset.postData);
+        showPostDetails(post);
       }
     });
 
-  // === حدث الحذف ===
-  document
-    .getElementById("postsContainer")
-    .addEventListener("click", async (e) => {
+    postsContainer.addEventListener("click", async (e) => {
       if (e.target.closest(".delete-post-btn")) {
         const postId = e.target.closest(".delete-post-btn").dataset.postId;
         if (!confirm("هل أنت متأكد من حذف هذا المنشور؟")) return;
-
         try {
           await deletePost(postId);
-          // أعد تحميل المنشورات
           document.getElementById("postsContainer").innerHTML = "";
           currentPage = 1;
           hasMore = true;
           loadPosts();
         } catch (error) {
           alert("فشل حذف المنشور. قد لا يكون لك الصلاحية.");
-          console.error("خطأ الحذف:", error);
         }
       }
     });
 
-  // === حدث التعديل ===
-  document
-    .getElementById("postsContainer")
-    .addEventListener("click", async (e) => {
+    postsContainer.addEventListener("click", async (e) => {
       if (e.target.closest(".edit-post-btn")) {
         const postId = e.target.closest(".edit-post-btn").dataset.postId;
         const postElement = e.target.closest(".post-card");
-        const post = JSON.parse(postElement.dataset.postData); // سنحفظ البيانات لاحقًا
+        const post = JSON.parse(postElement.dataset.postData);
 
-        // إنشاء Modal للتعديل (مشابه لإنشاء منشور)
         let editModalHTML = `
-      <div class="modal fade" id="editPostModal" tabindex="-1">
-        <div class="modal-dialog modal-lg">
-          <div class="modal-content">
-            <div class="modal-header bg-warning text-white">
-              <h5 class="modal-title">تعديل المنشور</h5>
-              <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-              <form id="editPostForm" enctype="multipart/form-data">
-                <div class="mb-3">
-                  <label class="form-label">العنوان</label>
-                  <input type="text" class="form-control" id="editPostTitle" value="${
-                    post.title || ""
-                  }">
+          <div class="modal fade" id="editPostModal" tabindex="-1">
+            <div class="modal-dialog modal-lg">
+              <div class="modal-content">
+                <div class="modal-header bg-warning text-white">
+                  <h5 class="modal-title">تعديل المنشور</h5>
+                  <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
-                <div class="mb-3">
-                  <label class="form-label">المحتوى</label>
-                  <textarea class="form-control" id="editPostBody" rows="4" required>${
-                    post.body || ""
-                  }</textarea>
+                <div class="modal-body">
+                  <form id="editPostForm" enctype="multipart/form-data">
+                    <div class="mb-3">
+                      <label class="form-label">العنوان</label>
+                      <input type="text" class="form-control" id="editPostTitle" value="${
+                        post.title || ""
+                      }">
+                    </div>
+                    <div class="mb-3">
+                      <label class="form-label">المحتوى</label>
+                      <textarea class="form-control" id="editPostBody" rows="4" required>${
+                        post.body || ""
+                      }</textarea>
+                    </div>
+                    <div class="mb-3">
+                      <label class="form-label">الصورة الحالية</label>
+                      ${
+                        post.image
+                          ? `<img src="${cleanImageUrl(
+                              post.image
+                            )}" class="img-fluid rounded mb-2" width="100">`
+                          : '<p class="text-muted">لا توجد صورة</p>'
+                      }
+                      <input type="file" class="form-control" id="editPostImage" accept="image/*">
+                      <div class="form-text">اتركه فارغًا للحفاظ على الصورة الحالية</div>
+                    </div>
+                    <div class="mb-3">
+                      <label class="form-label">التاغات (مفصولة بفواصل)</label>
+                      <input type="text" class="form-control" id="editPostTags" value="${(
+                        post.tags || []
+                      )
+                        .map((t) => t.arabic_name || t.name)
+                        .join(", ")}">
+                    </div>
+                    <div id="editPostError" class="alert alert-danger d-none"></div>
+                    <button type="submit" class="btn btn-warning w-100">تحديث المنشور</button>
+                  </form>
                 </div>
-                <div class="mb-3">
-                  <label class="form-label">الصورة الحالية</label>
-                  ${
-                    post.image
-                      ? `<img src="${cleanImageUrl(
-                          post.image
-                        )}" class="img-fluid rounded mb-2" width="100">`
-                      : '<p class="text-muted">لا توجد صورة</p>'
-                  }
-                  <input type="file" class="form-control" id="editPostImage" accept="image/*">
-                  <div class="form-text">اتركه فارغًا للحفاظ على الصورة الحالية</div>
-                </div>
-                <div class="mb-3">
-                  <label class="form-label">التاغات (مفصولة بفواصل)</label>
-                  <input type="text" class="form-control" id="editPostTags" 
-                         value="${(post.tags || [])
-                           .map((t) => t.arabic_name || t.name)
-                           .join(", ")}">
-                </div>
-                <div id="editPostError" class="alert alert-danger d-none"></div>
-                <button type="submit" class="btn btn-warning w-100">تحديث المنشور</button>
-              </form>
+              </div>
             </div>
           </div>
-        </div>
-      </div>
-    `;
+        `;
 
         const existing = document.getElementById("editPostModal");
         if (existing) existing.remove();
         document.body.insertAdjacentHTML("beforeend", editModalHTML);
 
-        // حفظ بيانات المنشور في العنصر (للوصول إليها لاحقًا)
-        postElement.dataset.postData = JSON.stringify(post);
-
-        // ربط نموذج التعديل
         document
           .getElementById("editPostForm")
           .addEventListener("submit", async (ev) => {
@@ -764,7 +741,6 @@
 
             try {
               await updatePost(postId, title, body, imageFile, tags);
-              // أعد التحميل
               document.getElementById("postsContainer").innerHTML = "";
               currentPage = 1;
               hasMore = true;
@@ -773,7 +749,6 @@
                 document.getElementById("editPostModal")
               ).hide();
             } catch (error) {
-              console.error("خطأ التعديل:", error);
               if (errorEl) {
                 errorEl.textContent =
                   error.response?.data?.message || "فشل تحديث المنشور.";
@@ -793,17 +768,111 @@
           });
       }
     });
-  // حدث عرض تفاصيل المنشور
-  document.getElementById("postsContainer").addEventListener("click", (e) => {
-    if (e.target.closest(".view-details-btn")) {
-      const postId = e.target.closest(".view-details-btn").dataset.postId;
-      // نحتاج إلى جلب المنشور الكامل (لأن post في renderPost قد لا يحتوي على comments)
-      // لكن بما أننا نستخدم نفس الكائن، يمكننا استخدام dataset
-      const postElement = e.target.closest(".post-card");
-      const post = JSON.parse(postElement.dataset.postData);
-      showPostDetails(post);
+  }
+
+  // ==============================
+  // 9. صفحة الملف الشخصي (آمنة)
+  // ==============================
+  if (document.getElementById("profileAvatar")) {
+    async function loadProfilePage() {
+      const userId = window.profileUserId;
+      if (!userId) return;
+
+      try {
+        const userData = await fetchUserProfile(
+          userId === "me" ? getAuthData().user.id : userId
+        );
+        const user = userData.data || userData;
+
+        document.getElementById("profileName").textContent =
+          user.name || "غير معروف";
+        document.getElementById("profileUsername").textContent = `@${
+          user.username || "---"
+        }`;
+        document.getElementById("postsCount").textContent =
+          user.posts_count || 0;
+        document.getElementById("commentsCount").textContent =
+          user.comments_count || 0;
+
+        const avatarUrl =
+          typeof user.profile_image === "string" && user.profile_image.trim()
+            ? user.profile_image.trim()
+            : `https://placehold.co/120x120/4361ee/white?text=${(user.name ||
+                "U")[0].toUpperCase()}`;
+        document.getElementById("profileAvatar").src = avatarUrl;
+
+        const { user: currentUser } = getAuthData();
+        const isMyProfile =
+          currentUser && (userId === "me" || user.id === currentUser.id);
+        if (isMyProfile) {
+          document.getElementById("emailSection").classList.remove("d-none");
+          document.getElementById("profileEmail").textContent =
+            user.email || "---";
+          document
+            .getElementById("editProfileSection")
+            .classList.remove("d-none");
+        }
+
+        const postsData = await fetchUserPosts(
+          userId === "me" ? currentUser.id : user.id,
+          1,
+          10
+        );
+        const posts = postsData.data || [];
+        const container = document.getElementById("userPostsContainer");
+        if (posts.length === 0) {
+          document.getElementById("noUserPosts").classList.remove("d-none");
+        } else {
+          container.innerHTML = "";
+          posts.forEach((post) => {
+            const postEl = renderPost(post);
+            if (!isMyProfile) {
+              const actions = postEl.querySelector(
+                ".d-flex.justify-content-end"
+              );
+              if (actions) actions.remove();
+            }
+            container.appendChild(postEl);
+          });
+        }
+      } catch (error) {
+        console.error("فشل تحميل الملف الشخصي:", error);
+        document.getElementById("profileName").textContent = "فشل التحميل";
+      }
     }
-  });
-  // معالجة نماذج Login / Register / Create Post
-  // (تم تضمينها في HTML عبر Bootstrap Modals)
+
+    document.getElementById("editProfileBtn")?.addEventListener("click", () => {
+      const { user } = getAuthData();
+      if (!user) return;
+      document.getElementById("editName").value = user.name || "";
+      document.getElementById("editUsername").value = user.username || "";
+      document.getElementById("editPassword").value = "";
+      new bootstrap.Modal(document.getElementById("editProfileModal")).show();
+    });
+
+    document
+      .getElementById("editProfileForm")
+      ?.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const name = document.getElementById("editName").value.trim();
+        const username = document.getElementById("editUsername").value.trim();
+        const password = document.getElementById("editPassword").value;
+        const errorEl = document.getElementById("editProfileError");
+        if (errorEl) errorEl.classList.add("d-none");
+
+        try {
+          await updateProfile(name, username, password);
+          alert("تم تحديث الملف بنجاح!");
+          location.reload();
+        } catch (error) {
+          if (errorEl) {
+            errorEl.textContent =
+              error.response?.data?.message || "فشل التحديث.";
+            errorEl.classList.remove("d-none");
+          }
+        }
+      });
+
+    loadProfilePage();
+  }
 })();
