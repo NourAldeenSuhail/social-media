@@ -4,11 +4,6 @@
   const API_BASE = "https://tarmeezacademy.com/api/v1";
 
   // === إدارة الجلسة ===
-  function saveAuthData(user, token) {
-    localStorage.setItem("tarmeez_user", JSON.stringify(user));
-    localStorage.setItem("tarmeez_token", token);
-  }
-
   function getAuthData() {
     const user = localStorage.getItem("tarmeez_user");
     const token = localStorage.getItem("tarmeez_token");
@@ -16,11 +11,6 @@
       user: user ? JSON.parse(user) : null,
       token: token || null,
     };
-  }
-
-  function clearAuthData() {
-    localStorage.removeItem("tarmeez_user");
-    localStorage.removeItem("tarmeez_token");
   }
 
   function getHeaders() {
@@ -33,54 +23,29 @@
   }
 
   // === API Functions ===
-  async function login(username, password) {
-    const res = await axios.post(`${API_BASE}/login`, { username, password });
+  async function fetchUserProfile(userId) {
+    const endpoint =
+      userId === "me" ? `${API_BASE}/users/me` : `${API_BASE}/users/${userId}`;
+    const res = await axios.get(endpoint, { headers: getHeaders() });
     return res.data;
   }
 
-  async function register(name, username, email, password) {
-    const res = await axios.post(`${API_BASE}/register`, {
-      name,
-      username,
-      email,
-      password,
-    });
-    return res.data;
-  }
-
-  async function logout() {
-    await axios.post(`${API_BASE}/logout`, {}, { headers: getHeaders() });
-  }
-
-  async function fetchPosts(page = 1, limit = 10) {
-    const res = await axios.get(`${API_BASE}/posts`, {
+  async function fetchUserPosts(userId, page = 1, limit = 10) {
+    const endpoint =
+      userId === "me"
+        ? `${API_BASE}/users/me/posts`
+        : `${API_BASE}/users/${userId}/posts`;
+    const res = await axios.get(endpoint, {
       headers: getHeaders(),
       params: { page, limit },
     });
     return res.data;
   }
 
-  async function fetchTags() {
-    try {
-      const res = await axios.get(`${API_BASE}/tags`, {
-        headers: getHeaders(),
-      });
-      return res.data.data || [];
-    } catch (error) {
-      return [];
-    }
-  }
-
-  async function createPost(title, body, imageFile, tags) {
-    const formData = new FormData();
-    if (title) formData.append("title", title);
-    formData.append("body", body);
-    if (imageFile) formData.append("image", imageFile);
-    if (tags?.length) {
-      tags.forEach((tag) => formData.append("tags[]", tag));
-    }
-
-    const res = await axios.post(`${API_BASE}/posts`, formData, {
+  async function updateProfile(username, password) {
+    const data = { username };
+    if (password) data.password = password;
+    const res = await axios.put(`${API_BASE}/updatePorfile`, data, {
       headers: getHeaders(),
     });
     return res.data;
@@ -107,9 +72,7 @@
     if (title !== undefined) formData.append("title", title);
     if (body !== undefined) formData.append("body", body);
     if (imageFile) formData.append("image", imageFile);
-    if (tags?.length) {
-      tags.forEach((tag) => formData.append("tags[]", tag));
-    }
+    if (tags?.length) tags.forEach((tag) => formData.append("tags[]", tag));
 
     const res = await axios.post(`${API_BASE}/posts/${postId}`, formData, {
       headers: getHeaders(),
@@ -387,207 +350,80 @@
     }
   }
 
-  // === تحميل المنشورات ===
-  let currentPage = 1;
-  let loading = false;
-  let hasMore = true;
-
-  async function loadPosts(reset = false) {
-    if (loading || (!hasMore && !reset)) return;
-    if (reset) {
-      document.getElementById("postsContainer").innerHTML = "";
-      currentPage = 1;
-      hasMore = true;
-    }
-
-    loading = true;
-    document.getElementById("loadingIndicator")?.classList.remove("d-none");
+  // === تحميل صفحة الملف الشخصي ===
+  async function loadProfilePage() {
+    const userId = window.profileUserId;
+    if (!userId) return;
 
     try {
-      const data = await fetchPosts(currentPage, 10);
-      const posts = data.data || [];
-      const meta = data.meta || {};
+      const userData = await fetchUserProfile(
+        userId === "me" ? getAuthData().user.id : userId
+      );
+      const user = userData.data || userData;
 
-      if (posts.length === 0 && currentPage === 1) {
-        document.getElementById("noMorePosts").textContent = "لا توجد منشورات.";
-        document.getElementById("noMorePosts")?.classList.remove("d-none");
-        return;
+      document.getElementById("profileName").textContent =
+        user.name || "غير معروف";
+      document.getElementById("profileUsername").textContent = `@${
+        user.username || "---"
+      }`;
+      document.getElementById("postsCount").textContent = user.posts_count || 0;
+      document.getElementById("commentsCount").textContent =
+        user.comments_count || 0;
+
+      const avatarUrl =
+        typeof user.profile_image === "string" && user.profile_image.trim()
+          ? user.profile_image.trim()
+          : `https://placehold.co/120x120/4361ee/white?text=${(user.name ||
+              "U")[0].toUpperCase()}`;
+      document.getElementById("profileAvatar").src = avatarUrl;
+
+      const { user: currentUser } = getAuthData();
+      const isMyProfile =
+        currentUser && (userId === "me" || user.id === currentUser.id);
+      if (isMyProfile) {
+        document.getElementById("emailSection").classList.remove("d-none");
+        document.getElementById("profileEmail").textContent =
+          user.email || "---";
+        document
+          .getElementById("editProfileSection")
+          .classList.remove("d-none");
       }
 
-      posts.forEach((post) => {
-        document.getElementById("postsContainer").appendChild(renderPost(post));
-      });
-
-      currentPage++;
-      if (meta.current_page >= meta.last_page) hasMore = false;
+      const postsData = await fetchUserPosts(
+        userId === "me" ? currentUser.id : user.id,
+        1,
+        10
+      );
+      const posts = postsData.data || [];
+      const container = document.getElementById("userPostsContainer");
+      if (posts.length === 0) {
+        document.getElementById("noUserPosts").classList.remove("d-none");
+      } else {
+        container.innerHTML = "";
+        posts.forEach((post) => {
+          const postEl = renderPost(post);
+          if (!isMyProfile) {
+            const actions = postEl.querySelector(".d-flex.justify-content-end");
+            if (actions) actions.remove();
+          }
+          container.appendChild(postEl);
+        });
+      }
     } catch (error) {
-      if (currentPage === 1) {
-        document.getElementById("noMorePosts").textContent = "فشل التحميل.";
-        document.getElementById("noMorePosts")?.classList.remove("d-none");
-      }
-    } finally {
-      loading = false;
-      document.getElementById("loadingIndicator")?.classList.add("d-none");
+      console.error("فشل تحميل الملف الشخصي:", error);
+      document.getElementById("profileName").textContent = "فشل التحميل";
     }
   }
 
-  // === بدء التشغيل ===
+  // === ربط الأحداث ===
   document.addEventListener("DOMContentLoaded", () => {
     updateUI();
-    loadPosts();
-
-    // أحداث الصفحة الرئيسية
-    document.getElementById("loginBtn")?.addEventListener("click", () => {
-      new bootstrap.Modal(document.getElementById("loginModal")).show();
-    });
-    document.getElementById("registerBtn")?.addEventListener("click", () => {
-      new bootstrap.Modal(document.getElementById("registerModal")).show();
-    });
-    document.getElementById("logoutBtn")?.addEventListener("click", () => {
-      logout().finally(() => {
-        clearAuthData();
-        updateUI();
-      });
-    });
-    document.getElementById("createPostBtn")?.addEventListener("click", () => {
-      new bootstrap.Modal(document.getElementById("createPostModal")).show();
-    });
-
-    // تمرير لا نهائي
-    window.addEventListener("scroll", () => {
-      if (
-        window.innerHeight + window.scrollY >=
-        document.body.offsetHeight - 1000
-      ) {
-        loadPosts();
-      }
-    });
-
-    // معالجة النماذج
-    document
-      .getElementById("loginForm")
-      ?.addEventListener("submit", async (e) => {
-        e.preventDefault();
-        const username = document.getElementById("loginUsername").value.trim();
-        const password = document.getElementById("loginPassword").value;
-        const errorEl = document.getElementById("loginError");
-        if (errorEl) errorEl.classList.add("d-none");
-
-        try {
-          const response = await login(username, password);
-          saveAuthData(response.user, response.token);
-          updateUI();
-          loadPosts(true);
-          bootstrap.Modal.getInstance(
-            document.getElementById("loginModal")
-          ).hide();
-          document.getElementById("loginForm").reset();
-        } catch (error) {
-          if (errorEl) {
-            errorEl.textContent =
-              error.response?.data?.message ||
-              "فشل تسجيل الدخول. تحقق من بياناتك.";
-            errorEl.classList.remove("d-none");
-          }
-        }
-      });
-
-    document
-      .getElementById("registerForm")
-      ?.addEventListener("submit", async (e) => {
-        e.preventDefault();
-        const name = document.getElementById("registerName").value.trim();
-        const username = document
-          .getElementById("registerUsername")
-          .value.trim();
-        const email = document.getElementById("registerEmail").value.trim();
-        const password = document.getElementById("registerPassword").value;
-        const errorEl = document.getElementById("registerError");
-        if (errorEl) errorEl.classList.add("d-none");
-
-        try {
-          const response = await register(name, username, email, password);
-          saveAuthData(response.user, response.token);
-          updateUI();
-          loadPosts(true);
-          bootstrap.Modal.getInstance(
-            document.getElementById("registerModal")
-          ).hide();
-          document.getElementById("registerForm").reset();
-        } catch (error) {
-          if (errorEl) {
-            const errors = error.response?.data?.errors;
-            if (errors) {
-              let msg = "";
-              for (const field in errors) msg += `${errors[field][0]}\n`;
-              errorEl.textContent = msg;
-            } else {
-              errorEl.textContent =
-                error.response?.data?.message || "فشل إنشاء الحساب.";
-            }
-            errorEl.classList.remove("d-none");
-          }
-        }
-      });
-
-    document
-      .getElementById("createPostForm")
-      ?.addEventListener("submit", async (e) => {
-        e.preventDefault();
-        const title = document.getElementById("postTitle")?.value.trim();
-        const body = document.getElementById("postBody")?.value.trim();
-        const imageFile = document.getElementById("postImage")?.files[0];
-        const tagsInput = document.getElementById("postTags")?.value || "";
-        const tags = tagsInput
-          ? tagsInput
-              .split(",")
-              .map((t) => t.trim())
-              .filter((t) => t)
-          : [];
-        const errorEl = document.getElementById("postError");
-        if (errorEl) errorEl.classList.add("d-none");
-
-        if (!body) {
-          if (errorEl) {
-            errorEl.textContent = "المحتوى مطلوب.";
-            errorEl.classList.remove("d-none");
-          }
-          return;
-        }
-
-        try {
-          await createPost(title, body, imageFile, tags);
-          document.getElementById("postsContainer").innerHTML = "";
-          currentPage = 1;
-          hasMore = true;
-          loadPosts();
-          bootstrap.Modal.getInstance(
-            document.getElementById("createPostModal")
-          ).hide();
-          document.getElementById("createPostForm").reset();
-          document.getElementById("suggestedTags").innerHTML = "";
-        } catch (error) {
-          console.error("خطأ في إنشاء المنشور:", error);
-          if (errorEl) {
-            const errors = error.response?.data?.errors;
-            if (errors) {
-              let msg = "";
-              for (const field in errors) msg += `${errors[field][0]}\n`;
-              errorEl.textContent = msg;
-            } else {
-              errorEl.textContent =
-                error.response?.data?.message ||
-                "فشل نشر المنشور. تأكد من اتصالك.";
-            }
-            errorEl.classList.remove("d-none");
-          }
-        }
-      });
+    loadProfilePage();
 
     // أحداث النقر
-    const postsContainer = document.getElementById("postsContainer");
-    if (postsContainer) {
-      postsContainer.addEventListener("click", (e) => {
+    const container = document.getElementById("userPostsContainer");
+    if (container) {
+      container.addEventListener("click", (e) => {
         if (e.target.closest(".view-details-btn")) {
           const postId = e.target.closest(".view-details-btn").dataset.postId;
           const postElement = e.target.closest(".post-card");
@@ -596,23 +432,20 @@
         }
       });
 
-      postsContainer.addEventListener("click", async (e) => {
+      container.addEventListener("click", async (e) => {
         if (e.target.closest(".delete-post-btn")) {
           const postId = e.target.closest(".delete-post-btn").dataset.postId;
           if (!confirm("هل أنت متأكد من حذف هذا المنشور؟")) return;
           try {
             await deletePost(postId);
-            document.getElementById("postsContainer").innerHTML = "";
-            currentPage = 1;
-            hasMore = true;
-            loadPosts();
+            loadProfilePage(); // أعد التحميل بعد الحذف
           } catch (error) {
             alert("فشل الحذف.");
           }
         }
       });
 
-      postsContainer.addEventListener("click", async (e) => {
+      container.addEventListener("click", async (e) => {
         if (e.target.closest(".edit-post-btn")) {
           const postId = e.target.closest(".edit-post-btn").dataset.postId;
           const postElement = e.target.closest(".post-card");
@@ -695,10 +528,7 @@
 
               try {
                 await updatePost(postId, title, body, imageFile, tags);
-                document.getElementById("postsContainer").innerHTML = "";
-                currentPage = 1;
-                hasMore = true;
-                loadPosts();
+                loadProfilePage();
                 bootstrap.Modal.getInstance(
                   document.getElementById("editPostModal")
                 ).hide();
@@ -723,5 +553,36 @@
         }
       });
     }
+
+    // تعديل الملف الشخصي
+    document.getElementById("editProfileBtn")?.addEventListener("click", () => {
+      const { user } = getAuthData();
+      if (!user) return;
+      document.getElementById("editUsername").value = user.username || "";
+      document.getElementById("editPassword").value = "";
+      new bootstrap.Modal(document.getElementById("editProfileModal")).show();
+    });
+
+    document
+      .getElementById("editProfileForm")
+      ?.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const username = document.getElementById("editUsername").value.trim();
+        const password = document.getElementById("editPassword").value;
+        const errorEl = document.getElementById("editProfileError");
+        if (errorEl) errorEl.classList.add("d-none");
+
+        try {
+          await updateProfile(username, password);
+          alert("تم التحديث بنجاح!");
+          location.reload();
+        } catch (error) {
+          if (errorEl) {
+            errorEl.textContent =
+              error.response?.data?.message || "فشل التحديث.";
+            errorEl.classList.remove("d-none");
+          }
+        }
+      });
   });
 })();
