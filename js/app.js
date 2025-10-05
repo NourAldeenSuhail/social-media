@@ -3,6 +3,22 @@
 
   const API_BASE = "https://tarmeezacademy.com/api/v1";
 
+  // === دالة التنبيهات ===
+  function showAlert(message, type = "success", container = document.body) {
+    const alert = document.createElement("div");
+    alert.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+    alert.style =
+      "top: 20px; right: 20px; z-index: 9999; min-width: 300px; direction: rtl;";
+    alert.innerHTML = `
+      ${message}
+      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    container.appendChild(alert);
+    setTimeout(() => {
+      if (alert.parentNode) alert.parentNode.removeChild(alert);
+    }, 5000);
+  }
+
   // === إدارة الجلسة ===
   function saveAuthData(user, token) {
     localStorage.setItem("tarmeez_user", JSON.stringify(user));
@@ -38,12 +54,22 @@
     return res.data;
   }
 
-  async function register(name, username, email, password) {
-    const res = await axios.post(`${API_BASE}/register`, {
-      name,
-      username,
-      email,
-      password,
+  async function register(
+    name,
+    username,
+    email,
+    password,
+    profileImage = null
+  ) {
+    const formData = new FormData();
+    formData.append("name", name);
+    formData.append("username", username);
+    formData.append("email", email);
+    formData.append("password", password);
+    if (profileImage) formData.append("profile_image", profileImage);
+
+    const res = await axios.post(`${API_BASE}/register`, formData, {
+      headers: { Accept: "application/json" },
     });
     return res.data;
   }
@@ -140,13 +166,6 @@
         .toUpperCase()}`;
 
     const imageUrl = cleanImageUrl(post.image);
-    const tagsHtml =
-      (post.tags || [])
-        .map((tag) => {
-          const tagName = tag.arabic_name || tag.name || "تاغ";
-          return `<span class="tag">#${tagName}</span>`;
-        })
-        .join(" ") || "";
 
     const { user } = getAuthData();
     const isOwner = user && post.author && post.author.id === user.id;
@@ -163,6 +182,19 @@
       </div>
     `
       : "";
+
+    // عرض التاغات
+    const tagsHtml =
+      post.tags && post.tags.length
+        ? post.tags
+            .map(
+              (tag) =>
+                `<span class="tag">#${
+                  tag.name || tag.arabic_name || tag
+                }</span>`
+            )
+            .join("")
+        : "";
 
     const postEl = document.createElement("div");
     postEl.className = "card post-card";
@@ -191,10 +223,12 @@
         <h5 class="post-title">${post.title || "بدون عنوان"}</h5>
         <p class="post-body">${post.body || "لا يوجد وصف."}</p>
         <div class="divider"></div>
-        <div class="tags">${tagsHtml}</div>
         <div class="d-flex justify-content-between align-items-center mt-2">
-          <div class="comments-count">
-            <i class="bi bi-chat"></i> ${post.comments_count || 0} تعليقات
+          <div>
+            <div class="comments-count">
+              <i class="bi bi-chat"></i> ${post.comments_count || 0} تعليقات
+            </div>
+            ${tagsHtml ? `<div class="tags mt-1">${tagsHtml}</div>` : ""}
           </div>
           <button class="btn btn-sm btn-outline-secondary view-details-btn" data-post-id="${
             post.id
@@ -211,7 +245,7 @@
 
   function renderComment(comment) {
     const author = comment.author || {};
-    const displayName = author.name || author.username || "مستخدم";
+    const displayName = author.username || author.name || "مستخدم";
     const avatarUrl =
       typeof author.profile_image === "string" && author.profile_image.trim()
         ? author.profile_image.trim()
@@ -342,8 +376,10 @@
             '<p class="text-muted">لا توجد تعليقات.</p>';
           if (document.getElementById("commentBody"))
             document.getElementById("commentBody").value = "";
+          showAlert("تم إضافة التعليق بنجاح!", "success");
         } catch (error) {
-          if (errorEl) errorEl.textContent = "فشل إرسال التعليق.";
+          const msg = error.response?.data?.message || "فشل إرسال التعليق.";
+          showAlert(msg, "danger");
         }
       });
 
@@ -447,6 +483,7 @@
       logout().finally(() => {
         clearAuthData();
         updateUI();
+        showAlert("تم تسجيل الخروج بنجاح!", "info");
       });
     });
     document.getElementById("createPostBtn")?.addEventListener("click", () => {
@@ -463,7 +500,7 @@
       }
     });
 
-    // معالجة النماذج
+    // معالجة نموذج تسجيل الدخول
     document
       .getElementById("loginForm")
       ?.addEventListener("submit", async (e) => {
@@ -482,16 +519,16 @@
             document.getElementById("loginModal")
           ).hide();
           document.getElementById("loginForm").reset();
+          showAlert("تم تسجيل الدخول بنجاح!", "success");
         } catch (error) {
-          if (errorEl) {
-            errorEl.textContent =
-              error.response?.data?.message ||
-              "فشل تسجيل الدخول. تحقق من بياناتك.";
-            errorEl.classList.remove("d-none");
-          }
+          const msg =
+            error.response?.data?.message ||
+            "فشل تسجيل الدخول. تحقق من بياناتك.";
+          showAlert(msg, "danger");
         }
       });
 
+    // معالجة نموذج التسجيل
     document
       .getElementById("registerForm")
       ?.addEventListener("submit", async (e) => {
@@ -502,11 +539,19 @@
           .value.trim();
         const email = document.getElementById("registerEmail").value.trim();
         const password = document.getElementById("registerPassword").value;
+        const profileImage = document.getElementById("registerProfileImage")
+          ?.files[0];
         const errorEl = document.getElementById("registerError");
         if (errorEl) errorEl.classList.add("d-none");
 
         try {
-          const response = await register(name, username, email, password);
+          const response = await register(
+            name,
+            username,
+            email,
+            password,
+            profileImage
+          );
           saveAuthData(response.user, response.token);
           updateUI();
           loadPosts(true);
@@ -514,22 +559,18 @@
             document.getElementById("registerModal")
           ).hide();
           document.getElementById("registerForm").reset();
+          showAlert("تم إنشاء الحساب بنجاح!", "success");
         } catch (error) {
-          if (errorEl) {
-            const errors = error.response?.data?.errors;
-            if (errors) {
-              let msg = "";
-              for (const field in errors) msg += `${errors[field][0]}\n`;
-              errorEl.textContent = msg;
-            } else {
-              errorEl.textContent =
-                error.response?.data?.message || "فشل إنشاء الحساب.";
-            }
-            errorEl.classList.remove("d-none");
+          let msg = error.response?.data?.message || "فشل إنشاء الحساب.";
+          if (error.response?.data?.errors) {
+            const errors = error.response.data.errors;
+            msg = Object.values(errors).flat().join("\n");
           }
+          showAlert(msg, "danger");
         }
       });
 
+    // معالجة نموذج إنشاء منشور
     document
       .getElementById("createPostForm")
       ?.addEventListener("submit", async (e) => {
@@ -548,10 +589,7 @@
         if (errorEl) errorEl.classList.add("d-none");
 
         if (!body) {
-          if (errorEl) {
-            errorEl.textContent = "المحتوى مطلوب.";
-            errorEl.classList.remove("d-none");
-          }
+          showAlert("المحتوى مطلوب.", "warning");
           return;
         }
 
@@ -566,21 +604,14 @@
           ).hide();
           document.getElementById("createPostForm").reset();
           document.getElementById("suggestedTags").innerHTML = "";
+          showAlert("تم نشر المنشور بنجاح!", "success");
         } catch (error) {
-          console.error("خطأ في إنشاء المنشور:", error);
-          if (errorEl) {
-            const errors = error.response?.data?.errors;
-            if (errors) {
-              let msg = "";
-              for (const field in errors) msg += `${errors[field][0]}\n`;
-              errorEl.textContent = msg;
-            } else {
-              errorEl.textContent =
-                error.response?.data?.message ||
-                "فشل نشر المنشور. تأكد من اتصالك.";
-            }
-            errorEl.classList.remove("d-none");
+          let msg = error.response?.data?.message || "فشل نشر المنشور.";
+          if (error.response?.data?.errors) {
+            const errors = error.response.data.errors;
+            msg = Object.values(errors).flat().join("\n");
           }
+          showAlert(msg, "danger");
         }
       });
 
@@ -606,8 +637,9 @@
             currentPage = 1;
             hasMore = true;
             loadPosts();
+            showAlert("تم حذف المنشور بنجاح!", "success");
           } catch (error) {
-            alert("فشل الحذف.");
+            showAlert("فشل حذف المنشور. قد لا يكون لك الصلاحية.", "danger");
           }
         }
       });
@@ -657,7 +689,7 @@
                         <input type="text" class="form-control" id="editPostTags" value="${(
                           post.tags || []
                         )
-                          .map((t) => t.arabic_name || t.name)
+                          .map((t) => t.name || t.arabic_name || t)
                           .join(", ")}">
                       </div>
                       <div id="editPostError" class="alert alert-danger d-none"></div>
@@ -702,12 +734,10 @@
                 bootstrap.Modal.getInstance(
                   document.getElementById("editPostModal")
                 ).hide();
+                showAlert("تم تحديث المنشور بنجاح!", "success");
               } catch (error) {
-                if (errorEl) {
-                  errorEl.textContent =
-                    error.response?.data?.message || "فشل التحديث.";
-                  errorEl.classList.remove("d-none");
-                }
+                const msg = error.response?.data?.message || "فشل التحديث.";
+                showAlert(msg, "danger");
               }
             });
 
